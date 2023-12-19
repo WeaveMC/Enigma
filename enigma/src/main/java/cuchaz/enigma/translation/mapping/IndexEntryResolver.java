@@ -19,6 +19,7 @@ import cuchaz.enigma.translation.VoidTranslator;
 import cuchaz.enigma.translation.representation.AccessFlags;
 import cuchaz.enigma.translation.representation.entry.ClassEntry;
 import cuchaz.enigma.translation.representation.entry.Entry;
+import cuchaz.enigma.translation.representation.entry.LocalVariableEntry;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
 
 public class IndexEntryResolver implements EntryResolver {
@@ -41,6 +42,11 @@ public class IndexEntryResolver implements EntryResolver {
 	public <E extends Entry<?>> Collection<E> resolveEntry(E entry, ResolutionStrategy strategy) {
 		if (entry == null) {
 			return Collections.emptySet();
+		}
+
+		if (entry instanceof LocalVariableEntry var && !var.isArgument()) {
+			// Variables aren't shared across methods
+			return Collections.singleton(entry);
 		}
 
 		Entry<ClassEntry> classChild = getClassChild(entry);
@@ -147,6 +153,11 @@ public class IndexEntryResolver implements EntryResolver {
 
 	@Override
 	public Set<Entry<?>> resolveEquivalentEntries(Entry<?> entry) {
+		if (entry instanceof LocalVariableEntry var && !var.isArgument()) {
+			// Variables aren't shared across methods
+			return Collections.singleton(entry);
+		}
+
 		MethodEntry relevantMethod = entry.findAncestor(MethodEntry.class);
 
 		if (relevantMethod == null || !entryIndex.hasMethod(relevantMethod)) {
