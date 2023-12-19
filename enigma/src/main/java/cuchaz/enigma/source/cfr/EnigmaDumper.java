@@ -12,7 +12,6 @@ import org.benf.cfr.reader.bytecode.analysis.loc.HasByteCodeLoc;
 import org.benf.cfr.reader.bytecode.analysis.types.JavaRefTypeInstance;
 import org.benf.cfr.reader.bytecode.analysis.types.JavaTypeInstance;
 import org.benf.cfr.reader.bytecode.analysis.types.MethodPrototype;
-import org.benf.cfr.reader.bytecode.analysis.variables.NamedVariable;
 import org.benf.cfr.reader.entities.AccessFlag;
 import org.benf.cfr.reader.entities.ClassFile;
 import org.benf.cfr.reader.entities.ClassFileField;
@@ -76,7 +75,7 @@ public class EnigmaDumper extends StringStreamDumper {
 		return new MethodEntry(getClassEntry(method.getOwner()), method.getName(), desc);
 	}
 
-	private LocalVariableEntry getParameterEntry(MethodPrototype method, int parameterIndex, String name) {
+	private LocalVariableEntry getParameterEntry(MethodPrototype method, int argPosition, int lvIndex, String name) {
 		MethodEntry owner = getMethodEntry(method);
 
 		// params may be not computed if cfr creates a lambda expression fallback, e.g. in PointOfInterestSet
@@ -84,9 +83,17 @@ public class EnigmaDumper extends StringStreamDumper {
 			return null;
 		}
 
-		int variableIndex = method.getParameterLValues().get(parameterIndex).localVariable.getIdx();
+		int variableIndex = method.getParameterLValues().get(argPosition).localVariable.getIdx();
 
 		return new LocalVariableEntry(owner, variableIndex, name, true, null);
+	}
+
+	private LocalVariableEntry getVariableEntry(int lvIndex, String name) {
+		if (contextMethod == null) {
+			return null;
+		}
+
+		return new LocalVariableEntry(contextMethod, lvIndex, name, false, null);
 	}
 
 	private FieldEntry getFieldEntry(JavaTypeInstance owner, String name, String desc) {
@@ -286,14 +293,14 @@ public class EnigmaDumper extends StringStreamDumper {
 	}
 
 	@Override
-	public Dumper parameterName(String name, Object ref, MethodPrototype method, int index, boolean defines) {
-		super.parameterName(name, ref, method, index, defines);
+	public Dumper parameterName(String name, Object ref, MethodPrototype method, int argPosition, int lvIndex, boolean defines) {
+		super.parameterName(name, ref, method, argPosition, lvIndex, defines);
 		int now = sb.length();
 		Token token = new Token(now - name.length(), now, name);
 		Entry<?> entry;
 
 		if (defines) {
-			refs.put(ref, entry = getParameterEntry(method, index, name));
+			refs.put(ref, entry = getParameterEntry(method, argPosition, lvIndex, name));
 		} else {
 			entry = refs.get(ref);
 		}
@@ -310,9 +317,29 @@ public class EnigmaDumper extends StringStreamDumper {
 	}
 
 	@Override
-	public Dumper variableName(String name, NamedVariable variable, boolean defines) {
-		// todo catch var declarations in the future
-		return super.variableName(name, variable, defines);
+	public Dumper variableName(String name, int lvIndex, int lvtRowIndex, int startOpIndex, boolean defines) {
+		super.variableName(name, lvIndex, lvtRowIndex, startOpIndex, defines);
+		int now = sb.length();
+		Token token = new Token(now - name.length(), now, name);
+		Entry<?> entry;
+
+		if (defines && lvIndex >= 0) {
+			refs.put(name+lvIndex, entry = getVariableEntry(lvIndex, name));
+		} else {
+			entry = refs.get(name+lvIndex);
+		}
+
+		if (entry != null) {
+			String n = name;
+
+			if (defines) {
+				this.index.addDeclaration(token, entry);
+			} else {
+				this.index.addReference(token, entry, contextMethod);
+			}
+		}
+
+		return this;
 	}
 
 	@Override
