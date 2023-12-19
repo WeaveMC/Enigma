@@ -11,13 +11,14 @@ import javax.annotation.Nullable;
 
 import org.jetbrains.annotations.ApiStatus;
 import net.fabricmc.mappingio.MappedElementKind;
+import net.fabricmc.mappingio.tree.MappingTreeView;
+import net.fabricmc.mappingio.tree.MappingTreeView.ClassMappingView;
+import net.fabricmc.mappingio.tree.MappingTreeView.FieldMappingView;
+import net.fabricmc.mappingio.tree.MappingTreeView.MethodArgMappingView;
+import net.fabricmc.mappingio.tree.MappingTreeView.MethodMappingView;
+import net.fabricmc.mappingio.tree.MappingTreeView.MethodVarMappingView;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 import net.fabricmc.mappingio.tree.VisitableMappingTree;
-import net.fabricmc.mappingio.tree.MappingTree.ClassMapping;
-import net.fabricmc.mappingio.tree.MappingTree.FieldMapping;
-import net.fabricmc.mappingio.tree.MappingTree.MethodArgMapping;
-import net.fabricmc.mappingio.tree.MappingTree.MethodMapping;
-import net.fabricmc.mappingio.tree.MappingTree.MethodVarMapping;
 
 import cuchaz.enigma.ProgressListener;
 import cuchaz.enigma.analysis.index.JarIndex;
@@ -72,12 +73,14 @@ public class MappingIoConverter {
 
 		newMappingTree.visitClass(classEntry.getFullName());
 		newMappingTree.visitComment(MappedElementKind.CLASS, mapping.javadoc());
+		boolean anyMappedParts = false;
 
 		do {
 			mapping = oldMappingTree.get(classEntry);
 
 			if (mapping != null && mapping.targetName() != null) {
 				parts.addFirst(mapping.targetName());
+				anyMappedParts = true;
 			} else {
 				parts.addFirst(classEntry.getName());
 			}
@@ -85,7 +88,7 @@ public class MappingIoConverter {
 			classEntry = classEntry.getOuterClass();
 		} while (classEntry != null);
 
-		String mappedName = String.join("$", parts);
+		String mappedName = anyMappedParts ? String.join("$", parts) : null;
 		newMappingTree.visitDstName(MappedElementKind.CLASS, 0, mappedName);
 
 		for (EntryTreeNode<EntryMapping> child : classNode.getChildNodes()) {
@@ -179,12 +182,12 @@ public class MappingIoConverter {
 		mappingTree.visitComment(MappedElementKind.METHOD_VAR, varMapping.javadoc());
 	}
 
-	public static EntryTree<EntryMapping> fromMappingIo(VisitableMappingTree mappingTree, ProgressListener progress, @Nullable JarIndex index) {
+	public static EntryTree<EntryMapping> fromMappingIo(MappingTreeView mappingTree, ProgressListener progress, @Nullable JarIndex index) {
 		EntryTree<EntryMapping> dstMappingTree = new HashEntryTree<>();
 		progress.init(mappingTree.getClasses().size(), I18n.translate("progress.mappings.converting.from_mappingio"));
 		int steps = 0;
 
-		for (ClassMapping classMapping : mappingTree.getClasses()) {
+		for (ClassMappingView classMapping : mappingTree.getClasses()) {
 			progress.step(steps++, classMapping.getDstName(0) != null ? classMapping.getDstName(0) : classMapping.getSrcName());
 			readClass(classMapping, dstMappingTree, index);
 		}
@@ -192,7 +195,7 @@ public class MappingIoConverter {
 		return dstMappingTree;
 	}
 
-	private static void readClass(ClassMapping classMapping, EntryTree<EntryMapping> mappingTree, JarIndex index) {
+	private static void readClass(ClassMappingView classMapping, EntryTree<EntryMapping> mappingTree, JarIndex index) {
 		ClassEntry currentClass = new ClassEntry(classMapping.getSrcName());
 		String dstName = classMapping.getDstName(0);
 
@@ -202,16 +205,16 @@ public class MappingIoConverter {
 
 		mappingTree.insert(currentClass, new EntryMapping(dstName, classMapping.getComment()));
 
-		for (FieldMapping fieldMapping : classMapping.getFields()) {
+		for (FieldMappingView fieldMapping : classMapping.getFields()) {
 			readField(fieldMapping, currentClass, mappingTree, index);
 		}
 
-		for (MethodMapping methodMapping : classMapping.getMethods()) {
+		for (MethodMappingView methodMapping : classMapping.getMethods()) {
 			readMethod(methodMapping, currentClass, mappingTree);
 		}
 	}
 
-	private static void readField(FieldMapping fieldMapping, ClassEntry parent, EntryTree<EntryMapping> mappingTree, JarIndex index) {
+	private static void readField(FieldMappingView fieldMapping, ClassEntry parent, EntryTree<EntryMapping> mappingTree, JarIndex index) {
 		String srcDesc = fieldMapping.getSrcDesc();
 		FieldEntry[] fieldEntries;
 
@@ -247,21 +250,21 @@ public class MappingIoConverter {
 		}
 	}
 
-	private static void readMethod(MethodMapping methodMapping, ClassEntry parent, EntryTree<EntryMapping> mappingTree) {
+	private static void readMethod(MethodMappingView methodMapping, ClassEntry parent, EntryTree<EntryMapping> mappingTree) {
 		MethodEntry currentMethod;
 		mappingTree.insert(currentMethod = new MethodEntry(parent, methodMapping.getSrcName(), new MethodDescriptor(methodMapping.getSrcDesc())),
 				new EntryMapping(methodMapping.getDstName(0), methodMapping.getComment()));
 
-		for (MethodArgMapping argMapping : methodMapping.getArgs()) {
+		for (MethodArgMappingView argMapping : methodMapping.getArgs()) {
 			readMethodArg(argMapping, currentMethod, mappingTree);
 		}
 
-		for (MethodVarMapping varMapping : methodMapping.getVars()) {
+		for (MethodVarMappingView varMapping : methodMapping.getVars()) {
 			readMethodVar(varMapping, currentMethod, mappingTree);
 		}
 	}
 
-	private static void readMethodArg(MethodArgMapping argMapping, MethodEntry parent, EntryTree<EntryMapping> mappingTree) {
+	private static void readMethodArg(MethodArgMappingView argMapping, MethodEntry parent, EntryTree<EntryMapping> mappingTree) {
 		String srcName = argMapping.getSrcName() != null ? argMapping.getSrcName() : "";
 
 		mappingTree.insert(
@@ -269,7 +272,7 @@ public class MappingIoConverter {
 				new EntryMapping(argMapping.getDstName(0), argMapping.getComment()));
 	}
 
-	private static void readMethodVar(MethodVarMapping varMapping, MethodEntry parent, EntryTree<EntryMapping> mappingTree) {
+	private static void readMethodVar(MethodVarMappingView varMapping, MethodEntry parent, EntryTree<EntryMapping> mappingTree) {
 		String srcName = varMapping.getSrcName() != null ? varMapping.getSrcName() : "";
 
 		mappingTree.insert(
