@@ -231,8 +231,8 @@ public enum EnigmaMappingsWriter implements MappingsWriter {
 			line = writeMethod(methodEntry, mapping);
 		} else if (entry instanceof FieldEntry fieldEntry) {
 			line = writeField(fieldEntry, mapping);
-		} else if (entry instanceof LocalVariableEntry varEntry && mapping.targetName() != null) {
-			line = writeArgument(varEntry, mapping);
+		} else if (entry instanceof LocalVariableEntry varEntry) {
+			line = writeLocal(varEntry, mapping);
 		}
 
 		if (line != null) {
@@ -292,8 +292,10 @@ public enum EnigmaMappingsWriter implements MappingsWriter {
 		return builder.toString();
 	}
 
-	protected String writeArgument(LocalVariableEntry entry, @Nonnull EntryMapping mapping) {
-		return EnigmaFormat.PARAMETER + " " + entry.getIndex() + ' ' + mapping.targetName();
+	protected String writeLocal(LocalVariableEntry entry, @Nonnull EntryMapping mapping) {
+		return (entry.isArgument() ? EnigmaFormat.PARAMETER : EnigmaFormat.LOCAL_VARIABLE)
+				+ ' ' + entry.getIndex()
+				+ ' ' + mapping.targetName();
 	}
 
 	private void writeMapping(StringBuilder builder, EntryMapping mapping) {
