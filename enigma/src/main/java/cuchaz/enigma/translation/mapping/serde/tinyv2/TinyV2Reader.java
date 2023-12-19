@@ -34,8 +34,9 @@ public final class TinyV2Reader implements MappingsReader {
 	private static final int IN_FIELD = IN_METHOD + 1;
 	// 2 indent
 	private static final int IN_PARAMETER = IN_FIELD + 1;
+	private static final int IN_VARIABLE = IN_PARAMETER + 1;
 	// general properties
-	private static final int STATE_SIZE = IN_PARAMETER + 1;
+	private static final int STATE_SIZE = IN_VARIABLE + 1;
 	private static final int[] INDENT_CLEAR_START = {IN_HEADER, IN_METHOD, IN_PARAMETER, STATE_SIZE};
 
 	@Override
@@ -141,10 +142,11 @@ public final class TinyV2Reader implements MappingsReader {
 						switch (parts[0]) {
 						case "p": // parameter
 							state.set(IN_PARAMETER);
-							holds[IN_PARAMETER] = parseArgument(holds[IN_METHOD], parts, escapeNames);
+							holds[IN_PARAMETER] = parseLocal(true, holds[IN_METHOD], parts, escapeNames);
 							break;
 						case "v": // local variable
-							// TODO add local var mapping
+							state.set(IN_VARIABLE);
+							holds[IN_VARIABLE] = parseLocal(false, holds[IN_METHOD], parts, escapeNames);
 							break;
 						case "c": // method javadoc
 							addJavadoc(holds[IN_METHOD], parts);
@@ -170,10 +172,12 @@ public final class TinyV2Reader implements MappingsReader {
 
 					unsupportKey(parts);
 				case 3:
-					if (state.get(IN_PARAMETER)) {
+					boolean parameter;
+
+					if ((parameter = state.get(IN_PARAMETER)) || state.get(IN_VARIABLE)) {
 						switch (parts[0]) {
 						case "c":
-							addJavadoc(holds[IN_PARAMETER], parts);
+							addJavadoc(holds[parameter ? IN_PARAMETER : IN_VARIABLE], parts);
 							break;
 						default:
 							unsupportKey(parts);
@@ -233,8 +237,8 @@ public final class TinyV2Reader implements MappingsReader {
 		}
 
 		String token2 = unescapeOpt(tokens[2], escapeNames);
-		String mapping = token2.substring(token2.lastIndexOf('$') + 1);
-		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(mapping));
+		String dstName = token2.substring(token2.lastIndexOf('$') + 1);
+		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(dstName.isEmpty() ? null : dstName));
 	}
 
 	private MappingPair<FieldEntry, RawEntryMapping> parseField(MappingPair<? extends Entry, RawEntryMapping> parent, String[] tokens, boolean escapeNames) {
@@ -247,8 +251,8 @@ public final class TinyV2Reader implements MappingsReader {
 			return new MappingPair<>(obfuscatedEntry);
 		}
 
-		String mapping = unescapeOpt(tokens[3], escapeNames);
-		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(mapping));
+		String dstName = unescapeOpt(tokens[3], escapeNames);
+		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(dstName.isEmpty() ? null : dstName));
 	}
 
 	private MappingPair<MethodEntry, RawEntryMapping> parseMethod(MappingPair<? extends Entry, RawEntryMapping> parent, String[] tokens, boolean escapeNames) {
@@ -261,8 +265,8 @@ public final class TinyV2Reader implements MappingsReader {
 			return new MappingPair<>(obfuscatedEntry);
 		}
 
-		String mapping = unescapeOpt(tokens[3], escapeNames);
-		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(mapping));
+		String dstName = unescapeOpt(tokens[3], escapeNames);
+		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(dstName.isEmpty() ? null : dstName));
 	}
 
 	private void addJavadoc(MappingPair<? extends Entry, RawEntryMapping> pair, String javadoc) {
@@ -275,20 +279,21 @@ public final class TinyV2Reader implements MappingsReader {
 		mapping.addJavadocLine(unescape(javadoc));
 	}
 
-	private MappingPair<LocalVariableEntry, RawEntryMapping> parseArgument(MappingPair<? extends Entry, RawEntryMapping> parent, String[] tokens, boolean escapeNames) {
+	private MappingPair<LocalVariableEntry, RawEntryMapping> parseLocal(boolean parameter, MappingPair<? extends Entry, RawEntryMapping> parent, String[] tokens, boolean escapeNames) {
 		MethodEntry ownerMethod = (MethodEntry) parent.getEntry();
 		int variableIndex = Integer.parseInt(tokens[1]);
 
 		// tokens[2] is the useless obf name
 
-		LocalVariableEntry obfuscatedEntry = new LocalVariableEntry(ownerMethod, variableIndex, "", true, null);
+		LocalVariableEntry obfuscatedEntry = new LocalVariableEntry(ownerMethod, variableIndex, "", parameter, null);
+		int dstNameIndex = parameter ? 3 : 5;
 
-		if (tokens.length <= 3) {
+		if (tokens.length <= dstNameIndex) {
 			return new MappingPair<>(obfuscatedEntry);
 		}
 
-		String mapping = unescapeOpt(tokens[3], escapeNames);
-		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(mapping));
+		String mapping = unescapeOpt(tokens[dstNameIndex], escapeNames);
+		return new MappingPair<>(obfuscatedEntry, new RawEntryMapping(mapping.isEmpty() ? null : mapping));
 	}
 
 	private static final String TO_ESCAPE = "\\\n\r\0\t";

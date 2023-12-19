@@ -118,11 +118,13 @@ public final class TinyV2Writer implements MappingsWriter {
 		for (EntryTreeNode<EntryMapping> child : node.getChildNodes()) {
 			Entry<?> entry = child.getEntry();
 
-			if (entry instanceof LocalVariableEntry) {
-				writeParameter(writer, child);
+			if (entry instanceof LocalVariableEntry var) {
+				if (var.isArgument()) {
+					writeParameter(writer, child);
+				} else {
+					writeVariable(writer, child);
+				}
 			}
-
-			// TODO write actual local variables
 		}
 	}
 
@@ -165,13 +167,37 @@ public final class TinyV2Writer implements MappingsWriter {
 		writer.print("\t");
 		EntryMapping mapping = node.getValue();
 
-		if (mapping == null || mapping.targetName() == null) {
-			writer.println(); // todo ???
-		} else {
-			writer.println(mapping.targetName());
-
-			writeComment(writer, mapping, 3);
+		if (mapping != null && mapping.targetName() != null) {
+			writer.print(mapping.targetName());
 		}
+
+		writer.println();
+		writeComment(writer, mapping, 3);
+	}
+
+	private void writeVariable(PrintWriter writer, EntryTreeNode<EntryMapping> node) {
+		if (node.getValue() == null || node.getValue().equals(EntryMapping.DEFAULT)) {
+			return; // Shortcut
+		}
+
+		writer.print(indent(2));
+		writer.print("v\t");
+		writer.print(((LocalVariableEntry) node.getEntry()).getIndex()); // lv-index
+		writer.print("\t");
+		writer.print(-1); // lv-start-offset
+		writer.print("\t");
+		writer.print(-1); // lvt-row-index
+		writer.print("\t");
+		writer.print(node.getEntry().getName()); // var-name-a
+		writer.print("\t");
+		EntryMapping mapping = node.getValue(); // var-name-b
+
+		if (mapping != null && mapping.targetName() != null) {
+			writer.print(mapping.targetName());
+		}
+
+		writer.println();
+		writeComment(writer, mapping, 3);
 	}
 
 	private void writeComment(PrintWriter writer, EntryMapping mapping, int indent) {
