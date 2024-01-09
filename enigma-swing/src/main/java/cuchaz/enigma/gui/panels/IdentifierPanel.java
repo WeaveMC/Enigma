@@ -2,6 +2,7 @@ package cuchaz.enigma.gui.panels;
 
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ItemEvent;
@@ -36,7 +37,7 @@ import cuchaz.enigma.utils.validation.ValidationContext;
 public class IdentifierPanel {
 	private final Gui gui;
 
-	private final JPanel ui = new JPanel();
+	private final DockablePanel ui;
 
 	private Entry<?> entry;
 	private Entry<?> deobfEntry;
@@ -48,9 +49,15 @@ public class IdentifierPanel {
 	public IdentifierPanel(Gui gui) {
 		this.gui = gui;
 
+		this.ui = new DockablePanel(I18n.translate("info_panel.identifier"), "IdentifierPanel", gui.getDockManager());
 		this.ui.setLayout(new GridBagLayout());
-		this.ui.setPreferredSize(ScaleUtil.getDimension(0, 135));
-		this.ui.setBorder(BorderFactory.createTitledBorder(I18n.translate("info_panel.identifier")));
+		this.ui.setBorder(BorderFactory.createEmptyBorder(4, 5, 0, 5));
+
+		Dimension size = ScaleUtil.getDimension(0, 100);
+		this.ui.setPreferredSize(size);
+		this.ui.setMinimumSize(size);
+		this.ui.setMaximumSize(size);
+		this.ui.setMaximumSize(null);
 		this.ui.setEnabled(false);
 	}
 
@@ -232,11 +239,10 @@ public class IdentifierPanel {
 	}
 
 	public void retranslateUi() {
-		this.ui.setBorder(BorderFactory.createTitledBorder(I18n.translate("info_panel.identifier")));
 		this.refreshReference();
 	}
 
-	public JPanel getUi() {
+	public DockablePanel getUi() {
 		return ui;
 	}
 

@@ -12,7 +12,6 @@
 package cuchaz.enigma.gui;
 
 import java.awt.BorderLayout;
-import java.awt.Container;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.nio.file.Path;
@@ -42,6 +41,10 @@ import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 import javax.swing.tree.DefaultMutableTreeNode;
 
+import ModernDocking.DockingRegion;
+import ModernDocking.api.DockingAPI;
+import ModernDocking.ext.ui.DockingUI;
+import ModernDocking.settings.Settings;
 import cuchaz.enigma.Enigma;
 import cuchaz.enigma.EnigmaProfile;
 import cuchaz.enigma.analysis.EntryReference;
@@ -51,13 +54,14 @@ import cuchaz.enigma.gui.dialog.JavadocDialog;
 import cuchaz.enigma.gui.dialog.SearchDialog;
 import cuchaz.enigma.gui.elements.CallsTree;
 import cuchaz.enigma.gui.elements.CollapsibleTabbedPane;
-import cuchaz.enigma.gui.elements.EditorTabbedPane;
+import cuchaz.enigma.gui.elements.EditorManager;
 import cuchaz.enigma.gui.elements.ImplementationsTree;
 import cuchaz.enigma.gui.elements.InheritanceTree;
 import cuchaz.enigma.gui.elements.MainWindow;
 import cuchaz.enigma.gui.elements.MenuBar;
 import cuchaz.enigma.gui.elements.ValidatableUi;
 import cuchaz.enigma.gui.panels.DeobfPanel;
+import cuchaz.enigma.gui.panels.DockablePanel;
 import cuchaz.enigma.gui.panels.EditorPanel;
 import cuchaz.enigma.gui.panels.IdentifierPanel;
 import cuchaz.enigma.gui.panels.ObfPanel;
@@ -78,7 +82,7 @@ import cuchaz.enigma.utils.validation.ParameterizedMessage;
 import cuchaz.enigma.utils.validation.ValidationContext;
 
 public class Gui {
-	private final MainWindow mainWindow = new MainWindow(Enigma.NAME);
+	private final MainWindow mainWindow;
 	private final GuiController controller;
 
 	private ConnectionState connectionState;
@@ -95,16 +99,11 @@ public class Gui {
 	private final ImplementationsTree implementationsTree;
 	private final CallsTree callsTree;
 
-	private final EditorTabbedPane editorTabbedPane;
+	private final EditorManager codeTabs;
 
-	private final JPanel classesPanel = new JPanel(new BorderLayout());
-	private final JSplitPane splitClasses;
-	private final JTabbedPane tabs = new JTabbedPane();
+	private final JTabbedPane infoTabs = new JTabbedPane();
 	private final CollapsibleTabbedPane logTabs = new CollapsibleTabbedPane(JTabbedPane.BOTTOM);
-	private final JSplitPane logSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true, tabs, logTabs);
-	private final JPanel centerPanel = new JPanel(new BorderLayout());
-	private final JSplitPane splitRight = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, true, centerPanel, this.logSplit);
-	private final JSplitPane splitCenter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, true, this.classesPanel, splitRight);
+	private final JSplitPane logSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true, infoTabs, logTabs);
 
 	private final DefaultListModel<String> userModel = new DefaultListModel<>();
 	private final DefaultListModel<Message> messageModel = new DefaultListModel<>();
@@ -124,6 +123,11 @@ public class Gui {
 	public SearchDialog searchDialog;
 
 	public Gui(EnigmaProfile profile, Set<EditableType> editableTypes) {
+		DockingUI.initialize();
+		// Settings.setAlwaysDisplayTabMode(true);
+		Settings.setTabLayoutPolicy(JTabbedPane.WRAP_TAB_LAYOUT);
+
+		this.mainWindow = new MainWindow(Enigma.NAME);
 		this.editableTypes = editableTypes;
 		this.controller = new GuiController(this, profile);
 		this.structurePanel = new StructurePanel(this);
@@ -134,8 +138,7 @@ public class Gui {
 		this.inheritanceTree = new InheritanceTree(this);
 		this.implementationsTree = new ImplementationsTree(this);
 		this.callsTree = new CallsTree(this);
-		this.editorTabbedPane = new EditorTabbedPane(this);
-		this.splitClasses = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true, this.obfPanel, this.deobfPanel);
+		this.codeTabs = new EditorManager(this);
 
 		this.setupUi();
 
@@ -157,21 +160,45 @@ public class Gui {
 
 		this.exportJarFileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 
-		this.splitClasses.setResizeWeight(0.3);
-		this.classesPanel.setPreferredSize(ScaleUtil.getDimension(250, 0));
+		// this.splitClasses.setResizeWeight(0.3);
+		// this.classesPanel.setPreferredSize(ScaleUtil.getDimension(250, 0));
 
 		// layout controls
-		Container workArea = this.mainWindow.workArea();
-		workArea.setLayout(new BorderLayout());
+		getDockManager().dock(infoPanel.getUi(), getFrame());
 
-		centerPanel.add(infoPanel.getUi(), BorderLayout.NORTH);
-		centerPanel.add(this.editorTabbedPane.getUi(), BorderLayout.CENTER);
+		getDockManager().dock(obfPanel, getFrame(), DockingRegion.WEST);
+		getDockManager().dock(deobfPanel, obfPanel, DockingRegion.SOUTH);
 
-		tabs.setPreferredSize(ScaleUtil.getDimension(250, 0));
-		tabs.addTab(I18n.translate("info_panel.tree.structure"), structurePanel.getPanel());
-		tabs.addTab(I18n.translate("info_panel.tree.inheritance"), inheritanceTree.getPanel());
-		tabs.addTab(I18n.translate("info_panel.tree.implementations"), implementationsTree.getPanel());
-		tabs.addTab(I18n.translate("info_panel.tree.calls"), callsTree.getPanel());
+		DockablePanel structurePanelD = new DockablePanel.WithTopTabs("Structure", "structure", getDockManager());
+		DockablePanel inheritancePanel = new DockablePanel.WithTopTabs("Inheritance", "inheritance", getDockManager());
+		DockablePanel implementationsPanel = new DockablePanel.WithTopTabs("Implementations", "implementations", getDockManager());
+		DockablePanel callsPanel = new DockablePanel.WithTopTabs("Calls", "calls", getDockManager());
+
+		structurePanelD.add(structurePanel.getPanel());
+		inheritancePanel.add(inheritanceTree.getPanel());
+		implementationsPanel.add(implementationsTree.getPanel());
+		callsPanel.add(callsTree.getPanel());
+
+		getDockManager().dock(structurePanelD, getFrame(), DockingRegion.EAST);
+		getDockManager().dock(inheritancePanel, structurePanelD, DockingRegion.CENTER);
+		getDockManager().dock(implementationsPanel, inheritancePanel, DockingRegion.CENTER);
+		getDockManager().dock(callsPanel, inheritancePanel, DockingRegion.CENTER);
+
+		SwingUtilities.invokeLater(() -> {
+			// ApplicationLayout defaultLayout = new WindowLayoutBuilder(getDockManager(), infoPanel.getUi().getPersistentID())
+			// 		.dock(editorTabbedPane.getUi().getPersistentID(), infoPanel.getUi().getPersistentID(), DockingRegion.SOUTH)
+			// 		.dockToRoot(obfPanel.getPersistentID(), DockingRegion.WEST)
+			// 		.dock(deobfPanel.getPersistentID(), obfPanel.getPersistentID(), DockingRegion.SOUTH)
+			// 		.buildApplicationLayout();
+			// DockingLayouts.addLayout("default", defaultLayout);
+			// getDockManager().getAppState().setDefaultApplicationLayout(defaultLayout);
+		});
+
+		// tabs.setPreferredSize(ScaleUtil.getDimension(250, 0));
+		// tabs.addTab(I18n.translate("info_panel.tree.structure"), structurePanel.getPanel());
+		// tabs.addTab(I18n.translate("info_panel.tree.inheritance"), inheritanceTree.getPanel());
+		// tabs.addTab(I18n.translate("info_panel.tree.implementations"), implementationsTree.getPanel());
+		// tabs.addTab(I18n.translate("info_panel.tree.calls"), callsTree.getPanel());
 
 		messages.setCellRenderer(new MessageListCellRenderer());
 		JPanel chatPanel = new JPanel(new BorderLayout());
@@ -191,21 +218,19 @@ public class Gui {
 		logTabs.addTab(I18n.translate("log_panel.messages"), messagePanel);
 		logSplit.setResizeWeight(0.5);
 		logSplit.resetToPreferredSizes();
-		splitRight.setResizeWeight(1); // let the left side take all the slack
-		splitRight.resetToPreferredSizes();
-		splitCenter.setResizeWeight(0); // let the right side take all the slack
-
-		workArea.add(splitCenter, BorderLayout.CENTER);
+		// splitRight.setResizeWeight(1); // let the left side take all the slack
+		// splitRight.resetToPreferredSizes();
+		// splitCenter.setResizeWeight(0); // let the right side take all the slack
 
 		// restore state
-		int[] layout = UiConfig.getLayout();
+		// int[] layout = UiConfig.getLayout();
 
-		if (layout.length >= 4) {
-			this.splitClasses.setDividerLocation(layout[0]);
-			this.splitCenter.setDividerLocation(layout[1]);
-			this.splitRight.setDividerLocation(layout[2]);
-			this.logSplit.setDividerLocation(layout[3]);
-		}
+		// if (layout.length >= 4) {
+		// 	this.splitClasses.setDividerLocation(layout[0]);
+		// 	this.splitCenter.setDividerLocation(layout[1]);
+		// 	this.splitRight.setDividerLocation(layout[2]);
+		// 	this.logSplit.setDividerLocation(layout[3]);
+		// }
 
 		this.mainWindow.statusBar().addPermanentComponent(this.connectionStatusLabel);
 
@@ -236,6 +261,10 @@ public class Gui {
 		return this.mainWindow;
 	}
 
+	public DockingAPI getDockManager() {
+		return this.mainWindow.dockManager();
+	}
+
 	public JFrame getFrame() {
 		return this.mainWindow.frame();
 	}
@@ -246,8 +275,8 @@ public class Gui {
 
 	public void setSingleClassTree(boolean singleClassTree) {
 		this.singleClassTree = singleClassTree;
-		this.classesPanel.removeAll();
-		this.classesPanel.add(isSingleClassTree() ? deobfPanel : splitClasses);
+		// this.classesPanel.removeAll();
+		// this.classesPanel.add(isSingleClassTree() ? deobfPanel : splitClasses);
 		getController().refreshClasses();
 		retranslateUi();
 	}
@@ -257,16 +286,16 @@ public class Gui {
 	}
 
 	public void onStartOpenJar() {
-		this.classesPanel.removeAll();
+		// this.classesPanel.removeAll();
 		redraw();
 	}
 
 	public void onFinishOpenJar(String jarName) {
 		// update gui
 		this.mainWindow.setTitle(Enigma.NAME + " - " + jarName);
-		this.classesPanel.removeAll();
-		this.classesPanel.add(isSingleClassTree() ? deobfPanel : splitClasses);
-		this.editorTabbedPane.closeAllEditorTabs();
+		// this.classesPanel.removeAll();
+		// this.classesPanel.add(isSingleClassTree() ? deobfPanel : splitClasses);
+		this.codeTabs.closeAllEditorTabs();
 
 		// update menu
 		isJarOpen = true;
@@ -280,8 +309,8 @@ public class Gui {
 		this.mainWindow.setTitle(Enigma.NAME);
 		setObfClasses(null);
 		setDeobfClasses(null);
-		this.editorTabbedPane.closeAllEditorTabs();
-		this.classesPanel.removeAll();
+		this.codeTabs.closeAllEditorTabs();
+		// this.classesPanel.removeAll();
 
 		// update menu
 		isJarOpen = false;
@@ -292,16 +321,16 @@ public class Gui {
 	}
 
 	public EditorPanel openClass(ClassEntry entry) {
-		return this.editorTabbedPane.openClass(entry);
+		return this.codeTabs.openClass(entry);
 	}
 
 	@Nullable
 	public EditorPanel getActiveEditor() {
-		return this.editorTabbedPane.getActiveEditor();
+		return this.codeTabs.getActiveEditor();
 	}
 
 	public void closeEditor(EditorPanel editor) {
-		this.editorTabbedPane.closeEditor(editor);
+		this.codeTabs.closeEditor(editor);
 	}
 
 	/**
@@ -310,7 +339,7 @@ public class Gui {
 	 * @param reference the reference
 	 */
 	public void showReference(EntryReference<Entry<?>, Entry<?>> reference) {
-		this.editorTabbedPane.openClass(reference.getLocationClassEntry().getOutermostClass()).showReference(reference);
+		this.codeTabs.openClass(reference.getLocationClassEntry().getOutermostClass()).showReference(reference);
 	}
 
 	public void setObfClasses(Collection<ClassEntry> obfClasses) {
@@ -344,7 +373,7 @@ public class Gui {
 
 	@Nullable
 	public EntryReference<Entry<?>, Entry<?>> getCursorReference() {
-		EditorPanel activeEditor = this.editorTabbedPane.getActiveEditor();
+		EditorPanel activeEditor = this.codeTabs.getActiveEditor();
 		return activeEditor == null ? null : activeEditor.getCursorReference();
 	}
 
@@ -359,7 +388,7 @@ public class Gui {
 	}
 
 	public void startRename(EditorPanel editor, String text) {
-		if (editor != this.editorTabbedPane.getActiveEditor()) {
+		if (editor != this.codeTabs.getActiveEditor()) {
 			return;
 		}
 
@@ -367,7 +396,7 @@ public class Gui {
 	}
 
 	public void startRename(EditorPanel editor) {
-		if (editor != this.editorTabbedPane.getActiveEditor()) {
+		if (editor != this.codeTabs.getActiveEditor()) {
 			return;
 		}
 
@@ -386,7 +415,7 @@ public class Gui {
 		}
 
 		this.inheritanceTree.display(cursorReference.entry);
-		tabs.setSelectedIndex(1);
+		infoTabs.setSelectedIndex(1);
 	}
 
 	public void showImplementations(EditorPanel editor) {
@@ -397,7 +426,7 @@ public class Gui {
 		}
 
 		this.implementationsTree.display(cursorReference.entry);
-		tabs.setSelectedIndex(2);
+		infoTabs.setSelectedIndex(2);
 	}
 
 	public void showCalls(EditorPanel editor, boolean recurse) {
@@ -408,7 +437,7 @@ public class Gui {
 		}
 
 		this.callsTree.showCalls(cursorReference.entry, recurse);
-		tabs.setSelectedIndex(3);
+		infoTabs.setSelectedIndex(3);
 	}
 
 	public void toggleMapping(EditorPanel editor) {
@@ -466,7 +495,7 @@ public class Gui {
 		UiConfig.setWindowPos("Main Window", this.mainWindow.frame().getLocationOnScreen());
 		UiConfig.setWindowSize("Main Window", this.mainWindow.frame().getSize());
 		UiConfig.setFullscreen("Main Window", this.mainWindow.frame().getExtendedState() == JFrame.MAXIMIZED_BOTH);
-		UiConfig.setLayout(this.splitClasses.getDividerLocation(), this.splitCenter.getDividerLocation(), this.splitRight.getDividerLocation(), this.logSplit.getDividerLocation());
+		// UiConfig.setLayout(this.splitClasses.getDividerLocation(), this.splitCenter.getDividerLocation(), this.splitRight.getDividerLocation(), this.logSplit.getDividerLocation());
 		UiConfig.save();
 
 		if (searchDialog != null) {
@@ -557,6 +586,10 @@ public class Gui {
 		return deobfPanel;
 	}
 
+	public IdentifierPanel getInfoPanel() {
+		return infoPanel;
+	}
+
 	public SearchDialog getSearchDialog() {
 		if (searchDialog == null) {
 			searchDialog = new SearchDialog(this);
@@ -603,24 +636,24 @@ public class Gui {
 
 		connectionStatusLabel.setText(I18n.translate(connectionState == ConnectionState.NOT_CONNECTED ? "status.disconnected" : "status.connected"));
 
-		if (connectionState == ConnectionState.NOT_CONNECTED) {
-			logSplit.setLeftComponent(null);
-			splitRight.setRightComponent(tabs);
-		} else {
-			splitRight.setRightComponent(logSplit);
-			logSplit.setLeftComponent(tabs);
-		}
+		// if (connectionState == ConnectionState.NOT_CONNECTED) {
+		// 	logSplit.setLeftComponent(null);
+		// 	splitRight.setRightComponent(tabs);
+		// } else {
+		// 	splitRight.setRightComponent(logSplit);
+		// 	logSplit.setLeftComponent(tabs);
+		// }
 
-		splitRight.setDividerLocation(splitRight.getDividerLocation());
+		// splitRight.setDividerLocation(splitRight.getDividerLocation());
 	}
 
 	public void retranslateUi() {
 		this.jarFileChooser.setDialogTitle(I18n.translate("menu.file.jar.open"));
 		this.exportJarFileChooser.setDialogTitle(I18n.translate("menu.file.export.jar"));
-		this.tabs.setTitleAt(0, I18n.translate("info_panel.tree.structure"));
-		this.tabs.setTitleAt(1, I18n.translate("info_panel.tree.inheritance"));
-		this.tabs.setTitleAt(2, I18n.translate("info_panel.tree.implementations"));
-		this.tabs.setTitleAt(3, I18n.translate("info_panel.tree.calls"));
+		// this.tabs.setTitleAt(0, I18n.translate("info_panel.tree.structure"));
+		// this.tabs.setTitleAt(1, I18n.translate("info_panel.tree.inheritance"));
+		// this.tabs.setTitleAt(2, I18n.translate("info_panel.tree.implementations"));
+		// this.tabs.setTitleAt(3, I18n.translate("info_panel.tree.calls"));
 		this.logTabs.setTitleAt(0, I18n.translate("log_panel.users"));
 		this.logTabs.setTitleAt(1, I18n.translate("log_panel.messages"));
 		this.connectionStatusLabel.setText(I18n.translate(connectionState == ConnectionState.NOT_CONNECTED ? "status.disconnected" : "status.connected"));
@@ -632,7 +665,7 @@ public class Gui {
 		this.deobfPanel.retranslateUi();
 		this.infoPanel.retranslateUi();
 		this.structurePanel.retranslateUi();
-		this.editorTabbedPane.retranslateUi();
+		this.codeTabs.retranslateUi();
 		this.inheritanceTree.retranslateUi();
 		this.implementationsTree.retranslateUi();
 		this.structurePanel.retranslateUi();

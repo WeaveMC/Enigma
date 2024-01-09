@@ -3,8 +3,6 @@ package cuchaz.enigma.gui.panels;
 import java.awt.BorderLayout;
 import java.util.Comparator;
 
-import javax.swing.JLabel;
-import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 
 import cuchaz.enigma.gui.ClassSelector;
@@ -12,13 +10,13 @@ import cuchaz.enigma.gui.Gui;
 import cuchaz.enigma.translation.representation.entry.ClassEntry;
 import cuchaz.enigma.utils.I18n;
 
-public class ObfPanel extends JPanel {
+public class ObfPanel extends DockablePanel {
 	public final ClassSelector obfClasses;
-	private final JLabel title = new JLabel();
 
 	private final Gui gui;
 
 	public ObfPanel(Gui gui) {
+		super(getTranslatedTitle(), "obfuscated-classes-panel", gui.getDockManager());
 		this.gui = gui;
 
 		Comparator<ClassEntry> obfClassComparator = (a, b) -> {
@@ -37,13 +35,21 @@ public class ObfPanel extends JPanel {
 		this.obfClasses.setRenameSelectionListener(gui::onRenameFromClassTree);
 
 		this.setLayout(new BorderLayout());
-		this.add(this.title, BorderLayout.NORTH);
 		this.add(new JScrollPane(this.obfClasses), BorderLayout.CENTER);
 
 		this.retranslateUi();
 	}
 
+	@Override
+	public String getTabText() {
+		return getTranslatedTitle();
+	}
+
+	private static String getTranslatedTitle() {
+		return I18n.translate("info_panel.classes.obfuscated");
+	}
+
 	public void retranslateUi() {
-		this.title.setText(I18n.translate("info_panel.classes.obfuscated"));
+		gui.getDockManager().updateTabInfo(this);
 	}
 }

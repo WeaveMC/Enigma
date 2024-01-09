@@ -9,6 +9,8 @@ import java.awt.GridLayout;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -23,7 +25,7 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
-import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
@@ -33,6 +35,8 @@ import javax.swing.Timer;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.Highlighter.HighlightPainter;
+
+import com.strobel.functions.Consumer;
 
 import de.sciss.syntaxpane.DefaultSyntaxKit;
 
@@ -67,7 +71,7 @@ import cuchaz.enigma.utils.I18n;
 import cuchaz.enigma.utils.Result;
 
 public class EditorPanel {
-	private final JPanel ui = new JPanel();
+	private final DockablePanel ui;
 	private final JEditorPane editor = new JEditorPane();
 	private final JScrollPane editorScrollPane = new JScrollPane(this.editor);
 	private final EditorPopupMenu popupMenu;
@@ -104,9 +108,26 @@ public class EditorPanel {
 	private DecompiledClassSource source;
 	private boolean settingSource;
 
-	public EditorPanel(Gui gui) {
+	public EditorPanel(Gui gui, ClassHandle classHandle, Consumer<EditorPanel> focusListener) {
 		this.gui = gui;
 		this.controller = gui.getController();
+		this.classHandle = classHandle;
+		this.ui = new DockablePanel.WithTopTabs(getFileName(), getFileName(), gui.getDockManager()) {
+			@Override
+			public boolean isClosable() {
+				return true;
+			}
+
+			@Override
+			public boolean getHasMoreOptions() {
+				return true;
+			}
+
+			@Override
+			public void addMoreOptions(JPopupMenu menu) {
+				menu.add(new EditorPopupMenu(EditorPanel.this, EditorPanel.this.gui).getUi());
+			}
+		};
 
 		this.editor.setEditable(false);
 		this.editor.setSelectionColor(new Color(31, 46, 90));
@@ -234,6 +255,17 @@ public class EditorPanel {
 			}
 		});
 
+		this.editor.addFocusListener(new FocusListener() {
+			@Override
+			public void focusGained(FocusEvent e) {
+				focusListener.accept(EditorPanel.this);
+			}
+
+			@Override
+			public void focusLost(FocusEvent e) {
+			}
+		});
+
 		this.retryButton.addActionListener(_e -> redecompileClass());
 
 		this.themeChangeListener = (laf, boxHighlightPainters) -> {
@@ -252,6 +284,8 @@ public class EditorPanel {
 		};
 
 		this.ui.putClientProperty(EditorPanel.class, this);
+		this.ui.add(this.editorScrollPane);
+		setClassHandle0(null, classHandle);
 	}
 
 	@Nullable
@@ -268,6 +302,8 @@ public class EditorPanel {
 	}
 
 	public void setClassHandle(ClassHandle handle) {
+		if (handle == this.classHandle) return;
+
 		ClassEntry old = null;
 
 		if (this.classHandle != null) {
@@ -322,7 +358,11 @@ public class EditorPanel {
 
 	public void destroy() {
 		Themes.removeListener(this.themeChangeListener);
-		this.classHandle.close();
+
+		if (classHandle != null) {
+			this.classHandle.close();
+			this.classHandle = null;
+		}
 	}
 
 	private void redecompileClass() {
@@ -667,7 +707,7 @@ public class EditorPanel {
 		this.listeners.remove(listener);
 	}
 
-	public JPanel getUi() {
+	public DockablePanel getUi() {
 		return this.ui;
 	}
 

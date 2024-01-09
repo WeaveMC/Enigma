@@ -5,6 +5,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.util.Iterator;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 import javax.swing.JTabbedPane;
@@ -12,46 +13,59 @@ import javax.swing.SwingUtilities;
 
 import com.google.common.collect.HashBiMap;
 
+import ModernDocking.DockingRegion;
+import ModernDocking.event.DockingEvent;
+import ModernDocking.event.DockingListener;
 import cuchaz.enigma.analysis.EntryReference;
 import cuchaz.enigma.classhandle.ClassHandle;
 import cuchaz.enigma.gui.Gui;
 import cuchaz.enigma.gui.events.EditorActionListener;
 import cuchaz.enigma.gui.panels.ClosableTabTitlePane;
+import cuchaz.enigma.gui.panels.DockablePanel;
 import cuchaz.enigma.gui.panels.EditorPanel;
 import cuchaz.enigma.gui.util.GuiUtil;
 import cuchaz.enigma.translation.representation.entry.ClassEntry;
 import cuchaz.enigma.translation.representation.entry.Entry;
 
-public class EditorTabbedPane {
-	private final JTabbedPane openFiles = new JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT);
+public class EditorManager {
 	private final HashBiMap<ClassEntry, EditorPanel> editors = HashBiMap.create();
-
 	private final EditorTabPopupMenu editorTabPopupMenu;
 	private final Gui gui;
+	private EditorPanel activeEditor;
 
-	public EditorTabbedPane(Gui gui) {
+	public EditorManager(Gui gui) {
 		this.gui = gui;
 		this.editorTabPopupMenu = new EditorTabPopupMenu(this);
-
-		this.openFiles.addMouseListener(GuiUtil.onMousePress(this::onTabPressed));
 	}
 
 	public EditorPanel openClass(ClassEntry entry) {
 		EditorPanel editorPanel = this.editors.computeIfAbsent(entry, e -> {
-			ClassHandle ch = this.gui.getController().getClassHandleProvider().openClass(entry);
+			Supplier<ClassHandle> classHandleSupplier = () -> this.gui.getController().getClassHandleProvider().openClass(entry);
+			ClassHandle ch = classHandleSupplier.get();
 
 			if (ch == null) {
 				return null;
 			}
 
-			EditorPanel ed = new EditorPanel(this.gui);
-			ed.setup();
-			ed.setClassHandle(ch);
-			this.openFiles.addTab(ed.getFileName(), ed.getUi());
+			EditorPanel ed = new EditorPanel(this.gui, ch, this::onTabFocused);
+			gui.getDockManager().addDockingListener(new DockingListener() {
+				@Override
+				public void dockingChange(DockingEvent e) {
+					if (e.getDockable() != ed) return;
 
-			ClosableTabTitlePane titlePane = new ClosableTabTitlePane(ed.getFileName(), () -> this.closeEditor(ed));
-			this.openFiles.setTabComponentAt(this.openFiles.indexOfComponent(ed.getUi()), titlePane.getUi());
-			titlePane.setTabbedPane(this.openFiles);
+					switch (e.getID()) {
+					case DOCKED:
+						ed.setClassHandle(classHandleSupplier.get());
+						ed.setup();
+						break;
+					case UNDOCKED:
+						closedEditor(ed);
+						break;
+					default:
+						break;
+					}
+				}
+			});
 
 			ed.addListener(new EditorActionListener() {
 				@Override
@@ -63,13 +77,13 @@ public class EditorTabbedPane {
 
 				@Override
 				public void onClassHandleChanged(EditorPanel editor, ClassEntry old, ClassHandle ch) {
-					EditorTabbedPane.this.editors.remove(old);
-					EditorTabbedPane.this.editors.put(ch.getRef(), editor);
+					EditorManager.this.editors.remove(old);
+					EditorManager.this.editors.put(ch.getRef(), editor);
 				}
 
 				@Override
 				public void onTitleChanged(EditorPanel editor, String title) {
-					titlePane.setText(editor.getFileName());
+					gui.getDockManager().updateTabInfo(editor.getUi());
 				}
 			});
 
@@ -86,7 +100,13 @@ public class EditorTabbedPane {
 		});
 
 		if (editorPanel != null) {
-			this.openFiles.setSelectedComponent(this.editors.get(entry).getUi());
+			if (activeEditor == null) {
+				gui.getDockManager().dock(editorPanel.getUi(), gui.getInfoPanel().getUi(), DockingRegion.SOUTH, 0.84);
+			} else {
+				gui.getDockManager().dock(editorPanel.getUi(), activeEditor.getUi(), DockingRegion.CENTER, 0.84);
+			}
+
+			gui.getDockManager().bringToFront(this.editors.get(entry).getUi());
 			this.gui.showStructure(editorPanel);
 		}
 
@@ -94,7 +114,15 @@ public class EditorTabbedPane {
 	}
 
 	public void closeEditor(EditorPanel ed) {
-		this.openFiles.remove(ed.getUi());
+		gui.getDockManager().undock(ed.getUi());
+		closedEditor(ed);
+	}
+
+	private void closedEditor(EditorPanel ed) {
+		if (ed == activeEditor) {
+			this.activeEditor = null;
+		}
+
 		this.editors.inverse().remove(ed);
 		this.gui.showStructure(this.getActiveEditor());
 		ed.destroy();
@@ -103,63 +131,62 @@ public class EditorTabbedPane {
 	public void closeAllEditorTabs() {
 		for (Iterator<EditorPanel> iter = this.editors.values().iterator(); iter.hasNext(); ) {
 			EditorPanel e = iter.next();
-			this.openFiles.remove(e.getUi());
+			gui.getDockManager().undock(e.getUi());
 			e.destroy();
 			iter.remove();
 		}
+
+		this.activeEditor = null;
 	}
 
 	public void closeTabsLeftOf(EditorPanel ed) {
-		int index = this.openFiles.indexOfComponent(ed.getUi());
+		// int index = this.openFiles.indexOfComponent(ed.getUi());
 
-		for (int i = index - 1; i >= 0; i--) {
-			closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
-		}
+		// for (int i = index - 1; i >= 0; i--) {
+		// 	closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
+		// }
 	}
 
 	public void closeTabsRightOf(EditorPanel ed) {
-		int index = this.openFiles.indexOfComponent(ed.getUi());
+		// int index = this.openFiles.indexOfComponent(ed.getUi());
 
-		for (int i = this.openFiles.getTabCount() - 1; i > index; i--) {
-			closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
-		}
+		// for (int i = this.openFiles.getTabCount() - 1; i > index; i--) {
+		// 	closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
+		// }
 	}
 
 	public void closeTabsExcept(EditorPanel ed) {
-		int index = this.openFiles.indexOfComponent(ed.getUi());
+		// int index = this.openFiles.indexOfComponent(ed.getUi());
 
-		for (int i = this.openFiles.getTabCount() - 1; i >= 0; i--) {
-			if (i == index) {
-				continue;
-			}
+		// for (int i = this.openFiles.getTabCount() - 1; i >= 0; i--) {
+		// 	if (i == index) {
+		// 		continue;
+		// 	}
 
-			closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
-		}
+		// 	closeEditor(EditorPanel.byUi(this.openFiles.getComponentAt(i)));
+		// }
 	}
 
 	@Nullable
 	public EditorPanel getActiveEditor() {
-		return EditorPanel.byUi(this.openFiles.getSelectedComponent());
+		return activeEditor;
 	}
 
-	private void onTabPressed(MouseEvent e) {
+	private void onTabPressed(EditorPanel editorPanel, MouseEvent e) {
 		if (SwingUtilities.isRightMouseButton(e)) {
-			int i = this.openFiles.getUI().tabForCoordinate(this.openFiles, e.getX(), e.getY());
-
-			if (i != -1) {
-				this.editorTabPopupMenu.show(this.openFiles, e.getX(), e.getY(), EditorPanel.byUi(this.openFiles.getComponentAt(i)));
-			}
+			this.editorTabPopupMenu.show(editorPanel.getUi(), e.getX(), e.getY(), editorPanel);
 		}
 
 		this.gui.showStructure(this.getActiveEditor());
 	}
 
+	private void onTabFocused(EditorPanel editorPanel) {
+		this.activeEditor = editorPanel;
+		this.gui.showStructure(editorPanel);
+	}
+
 	public void retranslateUi() {
 		this.editorTabPopupMenu.retranslateUi();
 		this.editors.values().forEach(EditorPanel::retranslateUi);
-	}
-
-	public Component getUi() {
-		return this.openFiles;
 	}
 }

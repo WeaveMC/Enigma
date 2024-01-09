@@ -10,6 +10,10 @@ def flatLafNatives = [
 		"linux-x86_64@so",
 ]
 
+repositories {
+	maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
+}
+
 dependencies {
 	implementation project(':enigma')
 	implementation project(':enigma-server')
@@ -20,6 +24,9 @@ dependencies {
 	implementation 'de.sciss:syntaxpane:1.2.1'
 	implementation 'com.github.lukeu:swing-dpi:0.10'
 	implementation 'org.drjekyll:fontchooser:2.5.2'
+	implementation 'io.github.andrewauclair:modern-docking-api:0.11.1-SNAPSHOT'
+	implementation 'io.github.andrewauclair:modern-docking-multi-app:0.11.1-SNAPSHOT'
+	implementation 'io.github.andrewauclair:modern-docking-ui:0.11.1-SNAPSHOT'
 
 	flatLafNatives.forEach {
 		implementation 'com.formdev:flatlaf:3.2.5:' + it

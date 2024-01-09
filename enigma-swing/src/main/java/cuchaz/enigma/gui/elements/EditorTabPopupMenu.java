@@ -20,7 +20,7 @@ public class EditorTabPopupMenu {
 
 	private EditorPanel editor;
 
-	public EditorTabPopupMenu(EditorTabbedPane pane) {
+	public EditorTabPopupMenu(EditorManager pane) {
 		this.ui = new JPopupMenu();
 
 		this.close = new JMenuItem();

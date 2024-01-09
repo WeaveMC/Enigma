@@ -5,11 +5,14 @@ import java.awt.Container;
 
 import javax.swing.JFrame;
 import javax.swing.JMenuBar;
-import javax.swing.JPanel;
+
+import ModernDocking.api.DockingAPI;
+import ModernDocking.app.Docking;
+import ModernDocking.app.RootDockingPanel;
 
 public class MainWindow {
 	private final JFrame frame;
-	private final JPanel workArea = new JPanel();
+	private final DockingAPI dockManager;
 
 	private final JMenuBar menuBar = new JMenuBar();
 	private final StatusBar statusBar = new StatusBar();
@@ -17,10 +20,11 @@ public class MainWindow {
 	public MainWindow(String title) {
 		this.frame = new JFrame(title);
 		this.frame.setJMenuBar(this.menuBar);
+		this.dockManager = new Docking(frame);
 
 		Container contentPane = this.frame.getContentPane();
 		contentPane.setLayout(new BorderLayout());
-		contentPane.add(this.workArea, BorderLayout.CENTER);
+		contentPane.add(new RootDockingPanel(dockManager, frame), BorderLayout.CENTER);
 		contentPane.add(this.statusBar.getUi(), BorderLayout.SOUTH);
 	}
 
@@ -36,8 +40,8 @@ public class MainWindow {
 		return this.statusBar;
 	}
 
-	public Container workArea() {
-		return this.workArea;
+	public DockingAPI dockManager() {
+		return this.dockManager;
 	}
 
 	public JFrame frame() {
