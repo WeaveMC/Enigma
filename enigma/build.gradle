@@ -8,6 +8,8 @@ dependencies {
 	implementation 'org.ow2.asm:asm-tree:9.6'
 	implementation 'org.ow2.asm:asm-util:9.6'
 
+	implementation 'net.fabricmc.matcher:matcher-model:0.1.0'
+
 	implementation 'org.bitbucket.mstrobel:procyon-compilertools:0.6.0'
 	implementation 'net.fabricmc:cfr:0.2.2'
 	implementation 'org.vineflower:vineflower:1.10.0'

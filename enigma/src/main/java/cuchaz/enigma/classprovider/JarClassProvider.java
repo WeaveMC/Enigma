@@ -61,7 +61,7 @@ public class JarClassProvider implements AutoCloseable, ClassProvider {
 	}
 
 	@Override
-	public void close() throws Exception {
+	public void close() throws IOException {
 		fileSystem.close();
 	}
 }

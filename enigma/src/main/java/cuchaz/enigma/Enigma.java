@@ -19,6 +19,9 @@ import java.util.Set;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableListMultimap;
+import matcher.model.config.Config;
+import matcher.model.config.ProjectConfig;
+import matcher.model.type.ClassEnvironment;
 import org.objectweb.asm.Opcodes;
 
 import cuchaz.enigma.analysis.index.JarIndex;
@@ -31,7 +34,7 @@ import cuchaz.enigma.api.service.JarIndexerService;
 import cuchaz.enigma.classprovider.CachingClassProvider;
 import cuchaz.enigma.classprovider.ClassProvider;
 import cuchaz.enigma.classprovider.CombiningClassProvider;
-import cuchaz.enigma.classprovider.JarClassProvider;
+import cuchaz.enigma.classprovider.MatcherClassProvider;
 import cuchaz.enigma.utils.Utils;
 
 public class Enigma {
@@ -56,13 +59,28 @@ public class Enigma {
 		return new Builder();
 	}
 
-	public EnigmaProject openJar(Path path, ClassProvider libraryClassProvider, ProgressListener progress) throws IOException {
-		JarClassProvider jarClassProvider = new JarClassProvider(path);
-		ClassProvider classProvider = new CachingClassProvider(new CombiningClassProvider(jarClassProvider, libraryClassProvider));
-		Set<String> scope = jarClassProvider.getClassNames();
+	public EnigmaProject openJar(Path path, ClassProvider libraryClassProvider, ProgressListener progressListener) throws IOException {
+		Config.init();
+		ProjectConfig config = new ProjectConfig.Builder(List.of(path), List.of()).build();
+		ClassEnvironment env = new ClassEnvironment();
+		env.init(config, progress -> progressListener.step((int) (progress * 50), "Reading with Matcher"));
+
+		MatcherClassProvider matcherClassProvider = new MatcherClassProvider(env);
+		ClassProvider classProvider = new CachingClassProvider(new CombiningClassProvider(matcherClassProvider, libraryClassProvider));
+		Set<String> scope = matcherClassProvider.getClassNames();
 
 		JarIndex index = JarIndex.empty();
-		index.indexJar(scope, classProvider, progress);
+		index.indexJar(scope, classProvider, new ProgressListener() {
+			@Override
+			public void step(int progress, String message) {
+				progressListener.step(50 + progress / 2, message);
+			}
+
+			@Override
+			public void init(int totalWork, String title) {
+				progressListener.init(totalWork, title);
+			}
+		});
 		services.get(JarIndexerService.TYPE).forEach(indexer -> indexer.acceptJar(scope, classProvider, index));
 
 		return new EnigmaProject(this, path, classProvider, index, Utils.zipSha1(path));
