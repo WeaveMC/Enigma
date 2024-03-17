@@ -24,7 +24,7 @@ import matcher.model.config.ProjectConfig;
 import matcher.model.type.ClassEnvironment;
 import org.objectweb.asm.Opcodes;
 
-import cuchaz.enigma.analysis.index.JarIndex;
+import cuchaz.enigma.analysis.index.MatcherIndex;
 import cuchaz.enigma.api.EnigmaPlugin;
 import cuchaz.enigma.api.EnigmaPluginContext;
 import cuchaz.enigma.api.service.EnigmaService;
@@ -67,9 +67,9 @@ public class Enigma {
 
 		MatcherClassProvider matcherClassProvider = new MatcherClassProvider(env);
 		ClassProvider classProvider = new CachingClassProvider(new CombiningClassProvider(matcherClassProvider, libraryClassProvider));
-		Set<String> scope = matcherClassProvider.getClassNames();
+		Set<String> scope = matcherClassProvider.getRealClassNames();
 
-		JarIndex index = JarIndex.empty();
+		MatcherIndex index = MatcherIndex.empty(env);
 		index.indexJar(scope, classProvider, new ProgressListener() {
 			@Override
 			public void step(int progress, String message) {

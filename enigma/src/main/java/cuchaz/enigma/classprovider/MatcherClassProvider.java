@@ -22,7 +22,7 @@ public class MatcherClassProvider implements ClassProvider {
 		return env.getClsByNameA(name).getMergedAsmNode();
 	}
 
-	public Set<String> getClassNames() {
+	public Set<String> getRealClassNames() {
 		if (classNames == null) {
 			classNames = new HashSet<>(env.getEnvA().getClasses()
 					.stream()
