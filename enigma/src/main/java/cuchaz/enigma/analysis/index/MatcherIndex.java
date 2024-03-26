@@ -12,13 +12,22 @@
 package cuchaz.enigma.analysis.index;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimap;
+import matcher.model.type.ClassEnvironment;
+import matcher.model.type.ClassInstance;
+import matcher.model.type.FieldInstance;
+import matcher.model.type.MethodInstance;
+import matcher.model.type.Signature.ClassSignature;
+import matcher.model.type.Signature.FieldSignature;
+import matcher.model.type.Signature.MethodSignature;
 
 import cuchaz.enigma.Enigma;
 import cuchaz.enigma.ProgressListener;
@@ -34,18 +43,12 @@ import cuchaz.enigma.translation.representation.entry.MethodDefEntry;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
 import cuchaz.enigma.translation.representation.entry.ParentedEntry;
 import cuchaz.enigma.utils.I18n;
-import matcher.model.type.ClassEnvironment;
-import matcher.model.type.ClassInstance;
-import matcher.model.type.FieldInstance;
-import matcher.model.type.MethodInstance;
-import matcher.model.type.Signature.ClassSignature;
-import matcher.model.type.Signature.FieldSignature;
-import matcher.model.type.Signature.MethodSignature;
 
 public class MatcherIndex extends JarIndex {
 	private final ClassEnvironment env;
 	private final EntryIndex entryIndex;
-	private final InheritanceIndex inheritanceIndex;
+	private final Map<String, ClassEntry> classesByName;
+	private final MatcherInheritanceIndex inheritanceIndex;
 	private final ReferenceIndex referenceIndex;
 	private final BridgeMethodIndex bridgeMethodIndex;
 	private final PackageVisibilityIndex packageVisibilityIndex;
@@ -56,10 +59,11 @@ public class MatcherIndex extends JarIndex {
 	private final Multimap<String, MethodDefEntry> methodImplementations = HashMultimap.create();
 	private final ListMultimap<ClassEntry, ParentedEntry> childrenByClass;
 
-	public MatcherIndex(ClassEnvironment env, EntryIndex entryIndex, InheritanceIndex inheritanceIndex, ReferenceIndex referenceIndex, BridgeMethodIndex bridgeMethodIndex, PackageVisibilityIndex packageVisibilityIndex) {
+	public MatcherIndex(ClassEnvironment env, Map<String, ClassEntry> classesByName, EntryIndex entryIndex, MatcherInheritanceIndex inheritanceIndex, ReferenceIndex referenceIndex, BridgeMethodIndex bridgeMethodIndex, PackageVisibilityIndex packageVisibilityIndex) {
 		super(entryIndex, inheritanceIndex, referenceIndex, bridgeMethodIndex, packageVisibilityIndex);
 
 		this.env = env;
+		this.classesByName = classesByName;
 		this.entryIndex = entryIndex;
 		this.inheritanceIndex = inheritanceIndex;
 		this.referenceIndex = referenceIndex;
@@ -72,11 +76,12 @@ public class MatcherIndex extends JarIndex {
 
 	public static MatcherIndex empty(ClassEnvironment env) {
 		EntryIndex entryIndex = new EntryIndex();
-		InheritanceIndex inheritanceIndex = new InheritanceIndex(entryIndex);
+		Map<String, ClassEntry> classesByName = new HashMap<>();
+		MatcherInheritanceIndex inheritanceIndex = new MatcherInheritanceIndex(env, entryIndex, classesByName);
 		ReferenceIndex referenceIndex = new ReferenceIndex();
 		BridgeMethodIndex bridgeMethodIndex = new BridgeMethodIndex(entryIndex, inheritanceIndex, referenceIndex);
 		PackageVisibilityIndex packageVisibilityIndex = new PackageVisibilityIndex();
-		return new MatcherIndex(env, entryIndex, inheritanceIndex, referenceIndex, bridgeMethodIndex, packageVisibilityIndex);
+		return new MatcherIndex(env, classesByName, entryIndex, inheritanceIndex, referenceIndex, bridgeMethodIndex, packageVisibilityIndex);
 	}
 
 	public void indexJar(Set<String> realClasses, ProgressListener progress) {
@@ -99,7 +104,7 @@ public class MatcherIndex extends JarIndex {
 			}
 
 			for (MethodInstance mth : clsInstance.getMethods()) {
-				MethodSignature	mthSignature = mth.getSignature();
+				MethodSignature mthSignature = mth.getSignature();
 				indexMethod(MethodDefEntry.parse(clsEntry, mth.getAccess(), mth.getName(), mth.getDesc(), mthSignature == null ? null : mthSignature.toString()));
 			}
 		}
@@ -130,14 +135,24 @@ public class MatcherIndex extends JarIndex {
 
 	@Override
 	public void indexClass(ClassDefEntry classEntry) {
+		classesByName.put(classEntry.getFullName(), classEntry);
+
 		if (classEntry.isJre()) {
 			return;
+		}
+
+		ClassEntry superClass = classEntry.getSuperClass();
+
+		if (superClass != null) {
+			classesByName.putIfAbsent(superClass.getFullName(), superClass);
 		}
 
 		for (ClassEntry interfaceEntry : classEntry.getInterfaces()) {
 			if (classEntry.equals(interfaceEntry)) {
 				throw new IllegalArgumentException("Class cannot be its own interface! " + classEntry);
 			}
+
+			classesByName.putIfAbsent(interfaceEntry.getFullName(), interfaceEntry);
 		}
 
 		indexers.forEach(indexer -> indexer.indexClass(classEntry));
